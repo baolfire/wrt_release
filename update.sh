@@ -951,12 +951,46 @@ update_uwsgi_limit_as() {
     fi
 }
 
+remove_tweaked_packages() {
+    local target_mk="$BUILD_DIR/include/target.mk"
+    if [ -f "$target_mk" ]; then
+        # 检查目标行是否未被注释
+        if grep -q "^DEFAULT_PACKAGES += \$(DEFAULT_PACKAGES.tweak)" "$target_mk"; then
+            # 如果未被注释，则添加注释
+            sed -i 's/DEFAULT_PACKAGES += $(DEFAULT_PACKAGES.tweak)/# DEFAULT_PACKAGES += $(DEFAULT_PACKAGES.tweak)/g' "$target_mk"
+        fi
+    fi
+}
+
+fix_gettext_compile_error() {
+    local patch_src="$BASE_PATH/patches/300-gettext-tools-define-bison-localedir.patch"
+    local gettext_path="$BUILD_DIR/package/libs/gettext-full"
+    local gettext_mk="$gettext_path/Makefile"
+    local patch_dest_dir="$gettext_path/patches"
+
+    if [ ! -f "$gettext_mk" ]; then
+        return
+    fi
+
+    local pkg_version
+    pkg_version=$(grep -oP 'PKG_VERSION:=\s*\K[0-9.]+' "$gettext_mk")
+
+    if [ "$pkg_version" = "0.24.1" ]; then
+        echo "gettext-full version is $pkg_version, applying patch."
+        # 从OpenWrt官方仓库获取最新的Makefile
+        curl -L -o "$gettext_mk" "https://raw.githubusercontent.com/openwrt/openwrt/main/package/libs/gettext-full/Makefile"
+        # 使用install命令简化补丁安装
+        install -Dm644 "$patch_src" "$patch_dest_dir/300-gettext-tools-define-bison-localedir.patch"
+    fi
+}
+
 main() {
     clone_repo
     clean_up
     reset_feeds_conf
     update_feeds
     remove_unwanted_packages
+    remove_tweaked_packages
     update_homeproxy
     fix_default_set
     fix_miniupnpd
@@ -982,6 +1016,7 @@ main() {
     update_nss_diag
     update_menu_location
     fix_compile_coremark
+    fix_gettext_compile_error
     update_dnsmasq_conf
     add_backup_info_to_sysupgrade
     optimize_smartDNS
